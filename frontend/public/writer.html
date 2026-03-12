@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OneEditor · 灵魂写手</title>
+<style>
+:root {
+  --pixel-900: #0e1114; --pixel-800: #13161b; --text:#e8ebf0; --muted:#99a1ad;
+  --accent:#7efcff; --accent2:#b692ff;
+}
+html,body{height:100%} body{margin:0;background:linear-gradient(180deg,var(--pixel-900),var(--pixel-800));color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;}
+.wrap{max-width:1100px;margin:0 auto;padding:40px 18px;}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+.mark{width:28px;height:28px;border-radius:8px;background:conic-gradient(from 160deg at 50% 50%,var(--accent),var(--accent2),var(--accent));box-shadow:0 8px 24px rgba(126,252,255,0.25),0 6px 18px rgba(182,146,255,0.22);}
+.title{font-size:26px;}
+.grid{display:flex;gap:16px;align-items:stretch;min-height:72vh;}
+.col{flex:1;display:flex;flex-direction:column;gap:10px;}
+.panel{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:16px;}
+.h{font-size:14px;color:var(--muted);margin:0 0 8px 0;}
+.list{display:flex;flex-direction:column;gap:6px;max-height:60vh;overflow:auto;}
+.item{padding:8px;border:1px solid rgba(255,255,255,0.08);border-radius:10px;}
+.editor{flex:1;resize:vertical;border-radius:12px;border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.03);color:var(--text);padding:14px;font-size:15px;}
+.actions{display:flex;gap:10px;margin-top:10px;}
+.btn{padding:10px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.10);background:linear-gradient(90deg,rgba(126,252,255,0.18),rgba(182,146,255,0.18));color:var(--text);font-weight:700;cursor:pointer;}
+.tiny{font-size:12px;color:var(--muted);}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand"><div class="mark"></div><div class="title">OneEditor · 灵魂写手</div></div>
+    <div class="grid">
+      <div class="col">
+        <div class="panel">
+          <p class="h">结构与要点</p>
+          <div id="outline" class="list"></div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="panel">
+          <p class="h">正文创作</p>
+          <textarea id="writerArea" class="editor" placeholder="围绕左侧结构与要点进行创作..."></textarea>
+          <div class="actions">
+            <button id="btnCopy" class="btn">复制全文</button>
+            <button id="btnBack" class="btn" style="background:linear-gradient(90deg,rgba(182,146,255,0.22),rgba(126,252,255,0.22));">返回编辑</button>
+            <span id="status" class="tiny"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+<script>
+const outline = document.getElementById('outline');
+const writerArea = document.getElementById('writerArea');
+const btnCopy = document.getElementById('btnCopy');
+const btnBack = document.getElementById('btnBack');
+const statusEl = document.getElementById('status');
+function renderOutline(data){
+  outline.innerHTML='';
+  const pts = data?.analysis?.points || [];
+  const struct = data?.analysis?.structure || {};
+  if(struct?.outline?.length){
+    const p = document.createElement('div'); p.className='item';
+    p.textContent = '大纲：' + struct.outline.join(' / ');
+    outline.appendChild(p);
+  }
+  pts.forEach((p,i)=>{
+    const div = document.createElement('div'); div.className='item';
+    div.innerHTML = `<b>${i+1}. ${p.title || '要点'}</b><br>${p.claim_text || ''}`;
+    outline.appendChild(div);
+  });
+}
+function init(){
+  try{
+    const payload = JSON.parse(localStorage.getItem('oneeditor:writerPayload') || '{}');
+    renderOutline(payload);
+    const seed = (payload?.analysis?.summary_one_line || '') + '\n\n';
+    writerArea.value = seed + (payload?.ingest?.text ? '> ' + payload.ingest.text.slice(0, 200) + '...\n' : '');
+  }catch(e){}
+}
+btnCopy.addEventListener('click', async ()=>{
+  try{
+    await navigator.clipboard.writeText(writerArea.value);
+    statusEl.textContent='已复制到剪贴板';
+    setTimeout(()=>statusEl.textContent='',1500);
+  }catch(e){ statusEl.textContent='复制失败'; }
+});
+btnBack.addEventListener('click', ()=>{ window.location.href='/' });
+init();
+</script>
+</body>
+</html>

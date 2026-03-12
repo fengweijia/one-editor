@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OneEditor · 创作中心</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================
+   OneEditor - 极简高级像素风设计
+   风格：暗黑程序员底色 + 灵感亮色 + 等宽字体
+   ============================================ */
+
+/* 色彩系统 */
+:root {
+  /* 底层 - 程序员暗黑 */
+  --bg-void: #0a0a0f;
+  --bg-base: #12121a;
+  --bg-elevated: #1a1a24;
+  --bg-surface: #22222e;
+  
+  /* 灵感亮色 */
+  --accent-cyan: #00ffd5;
+  --accent-magenta: #ff00aa;
+  --accent-yellow: #ffe600;
+  --accent-blue: #0088ff;
+  
+  /* 功能色 */
+  --text-primary: #e8e8ec;
+  --text-secondary: #8888a0;
+  --text-muted: #505068;
+  
+  /* 分割线 */
+  --border-subtle: rgba(255,255,255,0.06);
+  --border-active: rgba(0,255,213,0.3);
+  
+  /* 字体 */
+  --font-code: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-ui: 'Noto Sans SC', -apple-system, sans-serif;
+  
+  /* 动画 */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 300ms;
+}
+
+/* 重置 */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+
+/* 背景纹理 - 像素风网格 */
+body{
+  background: 
+    linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px),
+    linear-gradient(var(--border-subtle) 1px, transparent 1px),
+    radial-gradient(ellipse at 20% 0%, rgba(0,255,213,0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 100%, rgba(255,0,170,0.06) 0%, transparent 50%),
+    var(--bg-void);
+  background-size: 32px 32px, 32px 32px, 100% 100%, 100% 100%, 100% 100%;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  line-height:1.6;
+  overflow-x:hidden;
+}
+
+/* 页面容器 */
+.container{
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 48px 24px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header - 极简品牌 */
+header{
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 56px;
+}
+
+.logo{
+  width: 40px;
+  height: 40px;
+  border: 2px solid var(--accent-cyan);
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 4px,
+    rgba(0,255,213,0.1) 4px,
+    rgba(0,255,213,0.1) 8px
+  );
+  display: grid;
+  place-items: center;
+  font-family: var(--font-code);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent-cyan);
+}
+
+h1{
+  font-family: var(--font-code);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.5px;
+  color: var(--text-primary);
+}
+
+.tagline{
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-left: auto;
+  font-family: var(--font-code);
+}
+
+/* 主输入区 */
+.input-section{
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 4px;
+  transition: border-color var(--duration-normal) var(--ease-out);
+}
+
+.input-section:focus-within{
+  border-color: var(--border-active);
+  box-shadow: 0 0 0 1px rgba(0,255,213,0.1);
+}
+
+.input-wrapper{
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.url-input{
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 20px 24px;
+  font-family: var(--font-code);
+  font-size: 15px;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.url-input::placeholder{
+  color: var(--text-muted);
+}
+
+/* 按钮 - 像素风 */
+.action-btn{
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  padding: 16px 32px;
+  font-family: var(--font-code);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent-cyan);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.action-btn:hover{
+  background: var(--accent-cyan);
+  color: var(--bg-void);
+  border-color: var(--accent-cyan);
+}
+
+.action-btn:active{
+  transform: scale(0.98);
+}
+
+.action-btn:disabled{
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 状态栏 */
+.status-bar{
+  margin-top: 16px;
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-indicator{
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.status-indicator.active{
+  background: var(--accent-cyan);
+  box-shadow: 0 0 8px var(--accent-cyan);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse{
+  0%,100%{opacity:1;}
+  50%{opacity:0.5;}
+}
+
+/* 结果面板 - 渐入动画 */
+.results-section{
+  margin-top: 48px;
+  display: none;
+  animation: slideUp 0.5s var(--ease-out);
+}
+
+.results-section.visible{
+  display: block;
+}
+
+@keyframes slideUp{
+  from{opacity:0;transform:translateY(20px);}
+  to{opacity:1;transform:translateY(0);}
+}
+
+.result-card{
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+
+.card-header{
+  background: var(--bg-elevated);
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.card-label{
+  font-family: var(--font-code);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--accent-magenta);
+}
+
+.card-title{
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.card-body{
+  padding: 20px;
+}
+
+/* 标签样式 */
+.tag{
+  display: inline-block;
+  padding: 4px 10px;
+  font-family: var(--font-code);
+  font-size: 11px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 2px;
+  color: var(--text-secondary);
+  margin-right: 8px;
+  margin-bottom: 8px;
+}
+
+.tag.highlight{
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  background: rgba(0,255,213,0.05);
+}
+
+/* 观点卡片 */
+.point-item{
+  padding: 16px;
+  border-left: 2px solid var(--accent-cyan);
+  background: rgba(0,255,213,0.02);
+  margin-bottom: 12px;
+}
+
+.point-title{
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.point-claim{
+  font-family: var(--font-code);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* 金句 */
+.quote-item{
+  font-family: var(--font-code);
+  font-size: 14px;
+  color: var(--accent-yellow);
+  padding: 12px 16px;
+  background: rgba(255,230,0,0.03);
+  border-left: 2px solid var(--accent-yellow);
+  margin-bottom: 8px;
+}
+
+/* 操作按钮组 */
+.action-group{
+  display: flex;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.btn-secondary{
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  padding: 14px 24px;
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+
+.btn-secondary:hover{
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+/* 响应式 */
+@media(max-width: 640px){
+  .container{padding: 32px 16px;}
+  .tagline{display:none;}
+  .url-input{padding:16px;font-size:14px;}
+  .action-btn{padding:14px 24px;}
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="logo">OE</div>
+    <h1>OneEditor</h1>
+    <span class="tagline">// AI-native 创作工具</span>
+  </header>
+
+  <section class="input-section">
+    <div class="input-wrapper">
+      <input type="text" id="mainInput" class="url-input" placeholder="粘贴 URL 或直接输入内容..." autocomplete="off" spellcheck="false">
+      <button id="btnStart" class="action-btn">Analyze</button>
+    </div>
+    <div class="status-bar">
+      <span class="status-indicator" id="statusIndicator"></span>
+      <span id="statusText">Ready.</span>
+    </div>
+  </section>
+
+  <section class="results-section" id="resultsSection">
+    <!-- 摘要 -->
+    <div class="result-card">
+      <div class="card-header">
+        <span class="card-label">Summary</span>
+      </div>
+      <div class="card-body">
+        <h2 id="resultTitle" class="card-title"></h2>
+        <p id="resultSummary" style="color:var(--text-secondary);margin-top:12px;font-size:14px;"></p>
+        <div id="resultTags" style="margin-top:16px;"></div>
+      </div>
+    </div>
+
+    <!-- 核心观点 -->
+    <div class="result-card" id="pointsCard">
+      <div class="card-header">
+        <span class="card-label">Key Points</span>
+      </div>
+      <div class="card-body" id="pointsList"></div>
+    </div>
+
+    <!-- 金句 -->
+    <div class="result-card" id="quotesCard">
+      <div class="card-header">
+        <span class="card-label">Quotes</span>
+      </div>
+      <div class="card-body" id="quotesList"></div>
+    </div>
+
+    <!-- 操作 -->
+    <div class="action-group">
+      <button class="btn-secondary" id="btnReanalyze">↻ Re-analyze</button>
+      <button class="btn-secondary" id="btnStore">↓ Store</button>
+      <button class="btn-secondary" id="btnWriter">✎ Writer</button>
+    </div>
+  </section>
+</div>
+
+<script>
+// ============================================
+// OneEditor 前端逻辑
+// ============================================
+const API_BASE = '';
+
+const mainInput = document.getElementById('mainInput');
+const btnStart = document.getElementById('btnStart');
+const statusIndicator = document.getElementById('statusIndicator');
+const statusText = document.getElementById('statusText');
+const resultsSection = document.getElementById('resultsSection');
+
+// 状态管理
+let lastIngest = null;
+let lastAnalysis = null;
+
+// 设置状态
+function setStatus(text, active = false){
+  statusText.textContent = text;
+  statusIndicator.classList.toggle('active', active);
+}
+
+// 工具函数
+function isURL(str){
+  try{
+    const u = new URL(str);
+    return /^https?:/.test(u.protocol);
+  }catch{
+    return false;
+  }
+}
+
+// 渲染结果
+function renderResults(ingest, analysis){
+  // 标题
+  const title = ingest?.meta?.title || analysis?.summary_one_line?.slice(0,30) || 'Untitled';
+  document.getElementById('resultTitle').textContent = title;
+  
+  // 摘要
+  document.getElementById('resultSummary').textContent = analysis?.summary_one_line || '';
+  
+  // 标签
+  const tagsContainer = document.getElementById('resultTags');
+  const tags = analysis?.structure?.tags || [];
+  tagsContainer.innerHTML = tags.map(t => `<span class="tag highlight">#${t}</span>`).join('');
+  
+  // 观点
+  const pointsList = document.getElementById('pointsList');
+  const points = analysis?.points || [];
+  if(points.length === 0){
+    pointsList.innerHTML = '<p style="color:var(--text-muted)">No key points extracted.</p>';
+  }else{
+    pointsList.innerHTML = points.map(p => `
+      <div class="point-item">
+        <div class="point-title">${p.title || 'Point'}</div>
+        <div class="point-claim">${p.claim_text || ''}</div>
+      </div>
+    `).join('');
+  }
+  
+  // 金句
+  const quotesList = document.getElementById('quotesList');
+  const quotes = analysis?.quotes || [];
+  if(quotes.length === 0){
+    quotesList.innerHTML = '<p style="color:var(--text-muted)">No quotes extracted.</p>';
+  }else{
+    quotesList.innerHTML = quotes.map(q => `
+      <div class="quote-item">"${q.text || ''}"</div>
+    `).join('');
+  }
+  
+  resultsSection.classList.add('visible');
+}
+
+// 主流程
+async function startFlow(){
+  const raw = mainInput.value.trim();
+  if(!raw){
+    setStatus('Please enter a URL or text');
+    return;
+  }
+  
+  btnStart.disabled = true;
+  
+  try{
+    // 第一步：抓取
+    const isUrl = isURL(raw);
+    setStatus('Fetching content...', true);
+    
+    let txt, meta, platform;
+    
+    if(isUrl){
+      const r1 = await fetch(`${API_BASE}/ingest/url`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({url: raw})
+      });
+      const d1 = await r1.json();
+      lastIngest = d1.data || {};
+      txt = lastIngest.normalized_text || raw;
+      meta = lastIngest.meta || {};
+      platform = lastIngest.platform || 'web';
+    }else{
+      txt = raw;
+      meta = {title: 'From text'};
+      platform = 'manual';
+    }
+    
+    // 第二步：分析
+    setStatus('Analyzing...', true);
+    const r2 = await fetch(`${API_BASE}/analyze`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: txt, meta, platform})
+    });
+    const d2 = await r2.json();
+    lastAnalysis = d2.data || {};
+    
+    // 渲染
+    renderResults(lastIngest, lastAnalysis);
+    setStatus('Done.', false);
+    
+  }catch(e){
+    setStatus('Error: ' + e.message, false);
+  }finally{
+    btnStart.disabled = false;
+  }
+}
+
+// 事件绑定
+btnStart.addEventListener('click', startFlow);
+mainInput.addEventListener('keypress', e => {
+  if(e.key === 'Enter') startFlow();
+});
+
+// 重新分析
+document.getElementById('btnReanalyze').addEventListener('click', async () => {
+  if(!lastIngest?.normalized_text) return;
+  setStatus('Re-analyzing...', true);
+  try{
+    const r = await fetch(`${API_BASE}/analyze`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        text: lastIngest.normalized_text,
+        meta: lastIngest.meta,
+        platform: lastIngest.platform
+      })
+    });
+    const d = await r.json();
+    lastAnalysis = d.data || {};
+    renderResults(lastIngest, lastAnalysis);
+    setStatus('Done.', false);
+  }catch(e){
+    setStatus('Error: ' + e.message, false);
+  }
+});
+
+console.log('OneEditor loaded.');
+</script>
+</body>
+</html>
