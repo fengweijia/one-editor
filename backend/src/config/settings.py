@@ -20,6 +20,14 @@ class UniversalSettings(BaseModel):
     token: Optional[str] = None
     prefer_markdown: bool = True
 
+class ExtractTypeConfig(BaseModel):
+    name: str  # 如 "观点", "案例", "金句"
+    enabled: bool = True
+    prompt: str  # 提取的 prompt
+
+class ExtractConfig(BaseModel):
+    types: list[ExtractTypeConfig] = []
+
 class FeishuSettings(BaseModel):
     app_id: Optional[str] = None
     app_secret: Optional[str] = None
@@ -31,15 +39,29 @@ class FeishuSettings(BaseModel):
     tenant_token: Optional[str] = None
     tenant_token_expire_ts: Optional[int] = None
 
+DEFAULT_EXTRACT_CONFIG = ExtractConfig(types=[
+    ExtractTypeConfig(name="观点", enabled=True, prompt="请从文章中提取核心观点。每个观点需要包含：title（观点标题）、claim_text（观点内容）、evidence_text（支撑证据）。只输出观点，不要案例和金句。"),
+    ExtractTypeConfig(name="案例", enabled=True, prompt="请从文章中提取具体案例。每个案例需要包含：summary（案例摘要）、details（案例详情）。只输出案例，不要观点和金句。"),
+    ExtractTypeConfig(name="金句", enabled=True, prompt="请从文章中提取金句。原句原文引用，并标注适用场景。只输出金句，不要观点和案例。"),
+])
+
 class State:
     def __init__(self):
         self.model_config = ModelConfig()
         self.feishu_settings = FeishuSettings()
         self.universal_settings = UniversalSettings()
+        self.extract_config = DEFAULT_EXTRACT_CONFIG
 
 state = State()
 
 _SETTINGS_PATH = Path(__file__).resolve().parents[2] / ".oneeditor" / "settings.json"
+
+def _get_default_extract_types():
+    return [
+        {"name": "观点", "enabled": True, "prompt": "请从文章中提取核心观点。每个观点需要包含：title（观点标题）、claim_text（观点内容）、evidence_text（支撑证据）。只输出观点，不要案例和金句。"},
+        {"name": "案例", "enabled": True, "prompt": "请从文章中提取具体案例。每个案例需要包含：summary（案例摘要）、details（案例详情）。只输出案例，不要观点和金句。"},
+        {"name": "金句", "enabled": True, "prompt": "请从文章中提取金句。原句原文引用，并标注适用场景。只输出金句，不要观点和案例。"},
+    ]
 
 def _save_state() -> None:
     try:
@@ -48,6 +70,9 @@ def _save_state() -> None:
             "model_config": state.model_config.model_dump(),
             "feishu_settings": state.feishu_settings.model_dump(),
             "universal_settings": state.universal_settings.model_dump(),
+            "extract_config": {
+                "types": _get_default_extract_types()  # 保存默认配置
+            }
         }
         _SETTINGS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception:

@@ -19,8 +19,11 @@ from src.config.settings import (
     get_feishu_settings_public,
     set_universal_settings,
     get_universal_settings_public,
+    state,
+    DEFAULT_EXTRACT_CONFIG,
 )
 from src.services.universal_client import fetch_universal_text
+from src.services.universal_fetcher import fetch_with_fallback
 from src.api.writing_agent import router as writing_agent_router
 
 app = FastAPI(title="OneEditor API")
@@ -31,6 +34,21 @@ app.include_router(writing_agent_router, prefix="/writing", tags=["writing-agent
 @app.post("/ingest/url")
 async def ingest_url_endpoint(req: IngestUrlRequest):
     return {"status": "ok", "data": ingest_url(req.url)}
+
+@app.post("/ingest/url-universal")
+async def ingest_url_universal_endpoint(req: IngestUrlRequest):
+    """使用通用备选方案抓取 URL"""
+    content, title, method = fetch_with_fallback(req.url)
+    return {
+        "status": "ok", 
+        "data": {
+            "url": req.url,
+            "content": content,
+            "title": title,
+            "method": method,
+            "success": bool(content)
+        }
+    }
 
 @app.post("/ingest/text")
 async def ingest_text_endpoint(req: IngestTextRequest):
@@ -293,3 +311,143 @@ async def test_universal(url: str):
             "snippet": snippet
         }
     }
+
+# === 提取配置相关 ===
+
+@app.get("/settings/extract")
+async def get_extract_settings():
+    """获取提取配置（观点/案例/金句）"""
+    return {"status": "ok", "data": state.extract_config.model_dump()}
+
+@app.post("/settings/extract")
+async def set_extract_settings(payload: dict):
+    """设置提取配置"""
+    types = payload.get("types", [])
+    valid_types = []
+    for t in types:
+        if isinstance(t, dict) and t.get("name"):
+            from src.config.settings import ExtractTypeConfig
+            valid_types.append(ExtractTypeConfig(
+                name=t.get("name", ""),
+                enabled=t.get("enabled", True),
+                prompt=t.get("prompt", "")
+            ))
+    state.extract_config.types = valid_types
+    return {"status": "ok", "data": {"types": [t.model_dump() for t in valid_types]}}
+
+@app.get("/settings/extract/reset")
+async def reset_extract_settings():
+    """重置为默认提取配置"""
+    state.extract_config = DEFAULT_EXTRACT_CONFIG
+    return {"status": "ok", "data": state.extract_config.model_dump()}
+
+# === 飞书表格初始化 ===
+from src.storage.feishu_client import init_default_tables, list_tables, create_records
+
+@app.post("/feishu/init-tables")
+async def init_feishu_tables():
+    """自动创建默认的 4 个飞书表格（观点库/案例库/金句库/结构库）"""
+    result = init_default_tables()
+    return {"status": "ok", "data": result}
+
+@app.get("/feishu/tables")
+async def get_feishu_tables():
+    """获取飞书表格列表"""
+    result = list_tables()
+    return {"status": "ok", "data": result}
+
+# === 完整流程 API ===
+@app.post("/extract/full")
+async def full_extract流程(req: IngestUrlRequest):
+    """
+    完整流程：URL抓取 → AI提取 → 返回结果（供用户确认后存储）
+    """
+    from src.config.settings import state
+    
+    # 1. 抓取内容
+    content, title, method = fetch_with_fallback(req.url)
+    if not content:
+        return {"status": "error", "message": "无法抓取内容，请尝试手动粘贴"}
+    
+    # 2. AI 提取
+    meta = {"url": req.url, "title": title}
+    analysis = analyze_content(content, meta, "web")
+    
+    # 3. 返回结果
+    return {
+        "status": "ok",
+        "data": {
+            "url": req.url,
+            "title": title,
+            "method": method,
+            "analysis": analysis
+        }
+    }
+
+@app.post("/extract/save")
+async def save_to_feishu(req: StoreIndexRequest):
+    """
+    保存提取结果到飞书
+    """
+    from src.config.settings import state
+    s = state.feishu_settings
+    
+    # 检查配置
+    if not s.app_token or not (s.table_points and s.table_cases and s.table_quotes):
+        return {"status": "error", "message": "请先配置飞书表格"}
+    
+    analysis = req.analysis
+    meta = req.meta or {}
+    
+    results = []
+    
+    # 保存观点
+    points = analysis.get("points", [])
+    if points and s.table_points:
+        records = []
+        for p in points:
+            records.append({
+                "原文": meta.get("title", ""),
+                "观点": p.get("claim_text", ""),
+                "标签": p.get("tags", []),
+                "来源": meta.get("source", ""),
+                "来源URL": meta.get("url", ""),
+            })
+        if records:
+            r = create_records(s.table_points, records)
+            results.append({"type": "points", "count": len(records), "success": r.get("success")})
+    
+    # 保存案例
+    cases = analysis.get("cases", [])
+    if cases and s.table_cases:
+        records = []
+        for c in cases:
+            records.append({
+                "原文": meta.get("title", ""),
+                "案例": c.get("summary", ""),
+                "标签": c.get("tags", []),
+                "来源": meta.get("source", ""),
+                "来源URL": meta.get("url", ""),
+            })
+        if records:
+            r = create_records(s.table_cases, records)
+            results.append({"type": "cases", "count": len(records), "success": r.get("success")})
+    
+    # 保存金句
+    quotes = analysis.get("quotes", [])
+    if quotes and s.table_quotes:
+        records = []
+        for q in quotes:
+            records.append({
+                "原文": meta.get("title", ""),
+                "金句": q.get("text", ""),
+                "适用场景": q.get("scene", ""),
+                "标签": q.get("tags", []),
+                "来源": meta.get("source", ""),
+                "来源URL": meta.get("url", ""),
+            })
+        if records:
+            r = create_records(s.table_quotes, records)
+            results.append({"type": "quotes", "count": len(records), "success": r.get("success")})
+    
+    return {"status": "ok", "data": {"saved": results}}
