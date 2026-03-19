@@ -23,7 +23,7 @@ from src.config.settings import (
     DEFAULT_EXTRACT_CONFIG,
 )
 from src.services.universal_client import fetch_universal_text
-from src.services.universal_fetcher import fetch_with_fallback
+from src.services.universal_fetcher import fetch_with_fallback_async
 from src.api.writing_agent import router as writing_agent_router
 
 app = FastAPI(title="OneEditor API")
@@ -342,18 +342,18 @@ async def reset_extract_settings():
     return {"status": "ok", "data": state.extract_config.model_dump()}
 
 # === 飞书表格初始化 ===
-from src.storage.feishu_client import init_default_tables, list_tables, create_records
+from src.storage.feishu_client import init_default_tables_async, list_tables_async, create_records_async
 
 @app.post("/feishu/init-tables")
 async def init_feishu_tables():
     """自动创建默认的 4 个飞书表格（观点库/案例库/金句库/结构库）"""
-    result = init_default_tables()
+    result = await init_default_tables_async()
     return {"status": "ok", "data": result}
 
 @app.get("/feishu/tables")
 async def get_feishu_tables():
     """获取飞书表格列表"""
-    result = list_tables()
+    result = await list_tables_async()
     return {"status": "ok", "data": result}
 
 # === 完整流程 API ===
@@ -361,17 +361,19 @@ async def get_feishu_tables():
 async def full_extract流程(req: IngestUrlRequest):
     """
     完整流程：URL抓取 → AI提取 → 返回结果（供用户确认后存储）
+    异步版本，支持高并发
     """
     from src.config.settings import state
     
-    # 1. 抓取内容
-    content, title, method = fetch_with_fallback(req.url)
+    # 1. 异步抓取内容
+    content, title, method = await fetch_with_fallback_async(req.url)
     if not content:
         return {"status": "error", "message": "无法抓取内容，请尝试手动粘贴"}
     
-    # 2. AI 提取
-    meta = {"url": req.url, "title": title}
-    analysis = analyze_content(content, meta, "web")
+    # 2. AI 提取（CPU密集型，在线程池中运行）
+    import asyncio
+    loop = asyncio.get_event_loop()
+    analysis = await loop.run_in_executor(None, analyze_content, content, {"url": req.url, "title": title}, "web")
     
     # 3. 返回结果
     return {
@@ -388,6 +390,7 @@ async def full_extract流程(req: IngestUrlRequest):
 async def save_to_feishu(req: StoreIndexRequest):
     """
     保存提取结果到飞书
+    异步版本，支持高并发
     """
     from src.config.settings import state
     s = state.feishu_settings
@@ -401,37 +404,62 @@ async def save_to_feishu(req: StoreIndexRequest):
     
     results = []
     
-    # 保存观点
-    points = analysis.get("points", [])
-    if points and s.table_points:
-        records = []
-        for p in points:
-            records.append({
-                "原文": meta.get("title", ""),
-                "观点": p.get("claim_text", ""),
-                "标签": p.get("tags", []),
-                "来源": meta.get("source", ""),
-                "来源URL": meta.get("url", ""),
-            })
-        if records:
-            r = create_records(s.table_points, records)
-            results.append({"type": "points", "count": len(records), "success": r.get("success")})
+    # 并发保存观点、案例、金句
+    async def save_points():
+        points = analysis.get("points", [])
+        if points and s.table_points:
+            records = []
+            for p in points:
+                records.append({
+                    "原文": meta.get("title", ""),
+                    "观点": p.get("claim_text", ""),
+                    "标签": p.get("tags", []),
+                    "来源": meta.get("source", ""),
+                    "来源URL": meta.get("url", ""),
+                })
+            if records:
+                r = await create_records_async(s.table_points, records)
+                return {"type": "points", "count": len(records), "success": r.get("success")}
+        return None
     
-    # 保存案例
-    cases = analysis.get("cases", [])
-    if cases and s.table_cases:
-        records = []
-        for c in cases:
-            records.append({
-                "原文": meta.get("title", ""),
-                "案例": c.get("summary", ""),
-                "标签": c.get("tags", []),
-                "来源": meta.get("source", ""),
-                "来源URL": meta.get("url", ""),
-            })
-        if records:
-            r = create_records(s.table_cases, records)
-            results.append({"type": "cases", "count": len(records), "success": r.get("success")})
+    async def save_cases():
+        cases = analysis.get("cases", [])
+        if cases and s.table_cases:
+            records = []
+            for c in cases:
+                records.append({
+                    "原文": meta.get("title", ""),
+                    "案例": c.get("summary", ""),
+                    "标签": c.get("tags", []),
+                    "来源": meta.get("source", ""),
+                    "来源URL": meta.get("url", ""),
+                })
+            if records:
+                r = await create_records_async(s.table_cases, records)
+                return {"type": "cases", "count": len(records), "success": r.get("success")}
+        return None
+    
+    async def save_quotes():
+        quotes = analysis.get("quotes", [])
+        if quotes and s.table_quotes:
+            records = []
+            for q in quotes:
+                records.append({
+                    "原文": meta.get("title", ""),
+                    "金句": q.get("text", ""),
+                    "适用场景": q.get("scene", ""),
+                    "标签": q.get("tags", []),
+                    "来源": meta.get("source", ""),
+                    "来源URL": meta.get("url", ""),
+                })
+            if records:
+                r = await create_records_async(s.table_quotes, records)
+                return {"type": "quotes", "count": len(records), "success": r.get("success")}
+        return None
+    
+    # 并发执行
+    saved = await asyncio.gather(save_points(), save_cases(), save_quotes())
+    results = [r for r in saved if r]
     
     # 保存金句
     quotes = analysis.get("quotes", [])
