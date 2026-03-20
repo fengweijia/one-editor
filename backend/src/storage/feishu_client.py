@@ -9,6 +9,7 @@ from src.config.settings import state
 
 FEISHU_TOKEN_URL = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
 FEISHU_RECORDS_URL = "https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
+FEISHU_BATCH_RECORDS_URL = "https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records/batch_create"
 FEISHU_LIST_URL = "https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
 FEISHU_TABLES_URL = "https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables"
 FEISHU_CREATE_TABLE_URL = "https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables"
@@ -135,16 +136,24 @@ def create_records(table_id: str, records: List[Dict[str, Any]]) -> Dict[str, An
 
 
 async def create_records_async(table_id: str, records: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """异步版本 - 支持高并发"""
+    """异步版本 - 支持高并发 (单条或批量插入)"""
     s = state.feishu_settings
     if not s.app_token or not table_id:
         return {"success": False, "error": "missing_app_or_table"}
     token = await get_tenant_access_token_async()
     if not token:
         return {"success": False, "error": "missing_token"}
-    url = FEISHU_RECORDS_URL.format(app_token=s.app_token, table_id=table_id)
+        
     headers = {"Authorization": f"Bearer {token}"}
-    body = {"records": [{"fields": rec} for rec in records]}
+    
+    # 如果是多条记录，使用批量写入接口
+    if len(records) > 1:
+        url = FEISHU_BATCH_RECORDS_URL.format(app_token=s.app_token, table_id=table_id)
+        body = {"records": [{"fields": rec} for rec in records]}
+    else:
+        url = FEISHU_RECORDS_URL.format(app_token=s.app_token, table_id=table_id)
+        body = {"fields": records[0]} if records else {}
+        
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15.0)) as session:
             async with session.post(url, json=body, headers=headers) as resp:
@@ -152,6 +161,7 @@ async def create_records_async(table_id: str, records: List[Dict[str, Any]]) -> 
                 data = await resp.json()
                 return {"success": True, "data": data}
     except Exception as e:
+        print(f"Feishu insert error: {e}")
         return {"success": False, "error": str(e)}
 
 

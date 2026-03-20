@@ -1,15 +1,18 @@
 import sys
+import uuid
+import asyncio
+import json
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.responses import HTMLResponse
-from src.models.schemas import IngestUrlRequest, IngestTextRequest, AnalyzeRequest, StoreIndexRequest, SearchRequest, AggregateRequest
-from src.skills.source_ingest import ingest_url, ingest_text
-from src.skills.content_analyze import analyze_content
-from src.skills.asset_store_index import store_and_index
-from src.skills.retrieval import search
-from src.skills.theme_aggregate import aggregate
+from fastapi.middleware.cors import CORSMiddleware
+from sse_starlette.sse import EventSourceResponse
+
+from src.models.schemas import IngestUrlRequest, StoreIndexRequest
+from src.services.fetcher import fetch_async
+from src.providers.llm import get_provider
 from src.config.settings import (
     set_model_settings,
     get_model_settings_public,
@@ -17,19 +20,103 @@ from src.config.settings import (
     get_model_settings_json,
     set_feishu_settings,
     get_feishu_settings_public,
-    set_universal_settings,
-    get_universal_settings_public,
     state,
-    DEFAULT_EXTRACT_CONFIG,
 )
-from src.services.universal_client import fetch_universal_text
-from src.services.universal_fetcher import fetch_with_fallback_async
-from src.api.writing_agent import router as writing_agent_router
 
-app = FastAPI(title="OneEditor API")
+app = FastAPI(title="OneEditor API V2.0")
 
-# 注册写作Agent路由（2.0预留）
-app.include_router(writing_agent_router, prefix="/writing", tags=["writing-agent"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- In-Memory Task Store for SSE ---
+# In a real app, use Redis. For MVP, memory is fine.
+tasks_db = {}
+
+async def process_url_task(task_id: str, url: str):
+    """Background task to fetch and analyze URL, emitting SSE events."""
+    try:
+        # Step 1: Fetching
+        tasks_db[task_id]["status"] = "fetching"
+        tasks_db[task_id]["message"] = "正在通过 Jina Reader 读取网页原文..."
+        
+        content = await fetch_async(url)
+        if not content:
+            tasks_db[task_id]["status"] = "error"
+            tasks_db[task_id]["message"] = "无法抓取网页内容，请检查链接是否有效。"
+            return
+            
+        # Step 2: Analyzing
+        tasks_db[task_id]["status"] = "analyzing"
+        tasks_db[task_id]["message"] = "读取成功，AI 正在深度拆解核心观点与案例..."
+        
+        llm = get_provider()
+        if not llm:
+            tasks_db[task_id]["status"] = "error"
+            tasks_db[task_id]["message"] = "LLM 未配置，请先在设置中配置大模型。"
+            return
+            
+        analysis = await llm.analyze_async(content, meta={"url": url}, platform="web")
+        if not analysis:
+            tasks_db[task_id]["status"] = "error"
+            tasks_db[task_id]["message"] = "AI 解析失败或返回了错误的 JSON 格式。"
+            return
+            
+        # Step 3: Complete
+        tasks_db[task_id]["status"] = "complete"
+        tasks_db[task_id]["message"] = "解析完成！"
+        tasks_db[task_id]["data"] = analysis
+        
+    except Exception as e:
+        tasks_db[task_id]["status"] = "error"
+        tasks_db[task_id]["message"] = f"处理过程中发生未知错误: {str(e)}"
+
+@app.post("/api/v2/extract")
+async def extract_v2(req: IngestUrlRequest, background_tasks: BackgroundTasks):
+    """
+    V2.0 异步解析入口。返回 task_id 供前端连接 SSE。
+    """
+    task_id = str(uuid.uuid4())
+    tasks_db[task_id] = {
+        "status": "pending",
+        "message": "任务已加入队列...",
+        "data": None
+    }
+    background_tasks.add_task(process_url_task, task_id, req.url)
+    return {"status": "ok", "task_id": task_id}
+
+@app.get("/api/v2/tasks/{task_id}/stream")
+async def task_stream(task_id: str, request: Request):
+    """SSE endpoint for task progress."""
+    async def event_generator():
+        while True:
+            if await request.is_disconnected():
+                break
+                
+            task = tasks_db.get(task_id)
+            if not task:
+                yield {"event": "error", "data": json.dumps({"message": "Task not found"})}
+                break
+                
+            yield {"event": "message", "data": json.dumps(task)}
+            
+            if task["status"] in ["complete", "error"]:
+                # Clean up memory after sending terminal state
+                await asyncio.sleep(1) # give client time to receive
+                tasks_db.pop(task_id, None)
+                break
+                
+            await asyncio.sleep(0.5)
+            
+    return EventSourceResponse(event_generator())
+
+# ==========================================
+# Legacy API endpoints below (kept for UI compatibility)
+# ==========================================
 
 @app.post("/ingest/url")
 async def ingest_url_endpoint(req: IngestUrlRequest):

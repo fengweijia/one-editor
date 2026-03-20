@@ -1,0 +1,35 @@
+{
+  "model": {
+    "provider": "siliconflow",
+    "profile_id": "siliconflow-deepseek",
+    "base_url": "https://api.siliconflow.cn/v1",
+    "api": "openai-completions",
+    "api_key": "sk-ybqrkmxyhvlqpfybpgxmlkkmcovndfzpkcjrfjhadbenzxii",
+    "model": {
+      "id": "Pro/MiniMaxAI/MiniMax-M2.5",
+      "name": "MiniMax-M2.5"
+    }
+  },
+  "feishu": {
+    "app_id": "cli_a92403b1f8f85bcd",
+    "app_secret": "zgjX2KFeZe2owh2iwoeckHXInWp5OQvK",
+    "app_token": "YL5FboiPlaAXQdss1FncBMi2nNh?",
+    "table_id": "tblCAS8raeZD3PvK&view=vew36WHwkP",
+    "fields": {
+      "article_title": "文章来源",
+      "type": "类型",
+      "title": "标题",
+      "content": "内容",
+      "method": "方法",
+      "extra": "补充",
+      "tags": "标签",
+      "anchors": "锚点"
+    },
+    "type_values": {
+      "points": "观点",
+      "cases": "案例",
+      "quotes": "金句",
+      "structures": "结构"
+    }
+  }
+}

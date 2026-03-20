@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pydantic
+httpx
+trafilatura
+python-multipart
+python-dotenv

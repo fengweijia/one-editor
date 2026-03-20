@@ -1,0 +1,35 @@
+{
+  "model": {
+    "provider": "siliconflow",
+    "profile_id": "siliconflow-deepseek",
+    "base_url": "https://api.siliconflow.cn/v1",
+    "api": "openai-chat",
+    "api_key": "your-api-key-here",
+    "model": {
+      "id": "deepseek-ai/DeepSeek-V3.2",
+      "name": "DeepSeek-V3.2"
+    }
+  },
+  "feishu": {
+    "app_id": "your_app_id",
+    "app_secret": "your_app_secret",
+    "app_token": "your_bitable_app_token",
+    "table_id": "your_table_id",
+    "fields": {
+      "article_title": "文章来源",
+      "type": "类型",
+      "title": "标题",
+      "content": "内容",
+      "method": "方法",
+      "extra": "补充",
+      "tags": "标签",
+      "anchors": "锚点"
+    },
+    "type_values": {
+      "points": "观点",
+      "cases": "案例",
+      "quotes": "金句",
+      "structures": "结构"
+    }
+  }
+}

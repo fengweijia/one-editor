@@ -403,9 +403,9 @@ h1{
 
 <script>
 // ============================================
-// OneEditor 前端逻辑 - V2
+// OneEditor 前端逻辑 - V2 (SSE)
 // ============================================
-const API_BASE = '';
+const API_BASE = 'http://localhost:8000';
 
 const mainInput = document.getElementById('mainInput');
 const btnStart = document.getElementById('btnStart');
@@ -415,6 +415,7 @@ const resultsSection = document.getElementById('resultsSection');
 
 // 状态管理
 let lastData = null;
+let eventSource = null;
 
 // 设置状态
 function setStatus(text, active = false){
@@ -434,78 +435,53 @@ function isURL(str){
 
 // 渲染结果（支持编辑）
 function renderResults(data){
-  const { url, title, analysis } = data;
-  const a = analysis || {};
+  if(!data) return;
+  lastData = data;
   
-  // 标题
-  document.getElementById('resultTitle').textContent = title || a?.summary_one_line?.slice(0,30) || 'Untitled';
-  
-  // 摘要
-  document.getElementById('resultSummary').textContent = a?.summary_one_line || '';
+  // 质量评级
+  const qr = data.quality_rating || {};
+  document.getElementById('resultTitle').textContent = `Quality Score: ${qr.score}/10`;
+  document.getElementById('resultSummary').innerHTML = `
+    <strong>Summary:</strong> ${escapeHtml(qr.summary || '')}<br>
+    <strong>Concerns:</strong> ${escapeHtml((qr.concerns || []).join('; '))}
+  `;
   
   // 标签
+  const sa = data.structured_analysis || {};
   const tagsContainer = document.getElementById('resultTags');
-  const tags = a?.structure?.tags || [];
-  tagsContainer.innerHTML = tags.map(t => `<span class="tag highlight">#${t}</span>`).join('');
+  const tags = sa.tags || [];
+  tagsContainer.innerHTML = tags.map(t => `<span class="tag highlight">${escapeHtml(t)}</span>`).join('');
   
   // 观点（可编辑）
   const pointsList = document.getElementById('pointsList');
-  const points = a?.points || [];
+  const points = sa.core_arguments || [];
   if(points.length === 0){
     pointsList.innerHTML = '<p style="color:var(--text-muted)">No key points extracted.</p>';
   }else{
     pointsList.innerHTML = points.map((p, i) => `
       <div class="point-item">
         <div class="point-title">
-          <input type="text" class="edit-input" data-type="points" data-index="${i}" data-field="title" value="${escapeHtml(p.title || 'Point')}">
+          <input type="text" class="edit-input" data-type="core_arguments" data-index="${i}" data-field="point" value="${escapeHtml(p.point || 'Point')}">
         </div>
         <div class="point-claim">
-          <textarea class="edit-textarea" data-type="points" data-index="${i}" data-field="claim_text">${escapeHtml(p.claim_text || '')}</textarea>
-        </div>
-      </div>
-    `).join('');
-  }
-  
-  // 案例（可编辑）
-  let casesCard = document.getElementById('casesCard');
-  if(!casesCard && (a?.cases?.length > 0)){
-    // 动态添加案例卡片
-    const pointsCard = document.getElementById('pointsCard');
-    const newCard = document.createElement('div');
-    newCard.className = 'result-card';
-    newCard.id = 'casesCard';
-    newCard.innerHTML = `
-      <div class="card-header">
-        <span class="card-label">Cases</span>
-      </div>
-      <div class="card-body" id="casesList"></div>
-    `;
-    pointsCard.parentNode.insertBefore(newCard, pointsCard.nextSibling);
-  }
-  
-  if(a?.cases?.length > 0){
-    const casesList = document.getElementById('casesList');
-    casesList.innerHTML = a.cases.map((c, i) => `
-      <div class="point-item" style="border-left-color:var(--accent-blue)">
-        <div class="point-title">
-          <input type="text" class="edit-input" data-type="cases" data-index="${i}" data-field="summary" value="${escapeHtml(c.summary || 'Case')}">
-        </div>
-        <div class="point-claim">
-          <textarea class="edit-textarea" data-type="cases" data-index="${i}" data-field="details">${escapeHtml(c.details || '')}</textarea>
+          <textarea class="edit-textarea" data-type="core_arguments" data-index="${i}" data-field="evidence">${escapeHtml(p.evidence || '')}</textarea>
+          <div style="font-size:11px;color:var(--accent-magenta);margin-top:4px;">Technique: ${escapeHtml(p.writing_technique || '')}</div>
         </div>
       </div>
     `).join('');
   }
   
   // 金句（可编辑）
+  const re = data.raw_essence || {};
   const quotesList = document.getElementById('quotesList');
-  const quotes = a?.quotes || [];
+  const quotes = re.golden_sentences || [];
   if(quotes.length === 0){
     quotesList.innerHTML = '<p style="color:var(--text-muted)">No quotes extracted.</p>';
   }else{
     quotesList.innerHTML = quotes.map((q, i) => `
       <div class="quote-item">
-        <textarea class="edit-textarea quote-textarea" data-type="quotes" data-index="${i}" data-field="text">${escapeHtml(q.text || '')}</textarea>
+        <textarea class="edit-textarea quote-textarea" data-type="golden_sentences" data-index="${i}" data-field="text" style="width:100%;background:transparent;border:none;color:inherit;resize:vertical;font-family:inherit;">${escapeHtml(q.text || '')}</textarea>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Context: ${escapeHtml(q.context_before || '')} [...] ${escapeHtml(q.context_after || '')}</div>
       </div>
     `).join('');
   }
@@ -518,130 +494,103 @@ function renderResults(data){
 
 function escapeHtml(str){
   if(!str) return '';
-  return str.replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/"/g,'"');
+  return String(str).replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/"/g,'"');
 }
 
 function bindEditEvents(){
-  // 输入框编辑
-  document.querySelectorAll('.edit-input').forEach(el => {
-    el.addEventListener('change', updateAnalysisFromUI);
-  });
-  // 文本域编辑
-  document.querySelectorAll('.edit-textarea').forEach(el => {
+  document.querySelectorAll('.edit-input, .edit-textarea').forEach(el => {
     el.addEventListener('change', updateAnalysisFromUI);
   });
 }
 
 function updateAnalysisFromUI(){
-  if(!lastData || !lastData.analysis) return;
-  const a = lastData.analysis;
+  if(!lastData) return;
   
   // 更新观点
-  document.querySelectorAll('[data-type="points"]').forEach(el => {
+  document.querySelectorAll('[data-type="core_arguments"]').forEach(el => {
     const idx = parseInt(el.dataset.index);
     const field = el.dataset.field;
-    if(!a.points[idx]) a.points[idx] = {};
-    a.points[idx][field] = el.value;
-  });
-  
-  // 更新案例
-  document.querySelectorAll('[data-type="cases"]').forEach(el => {
-    const idx = parseInt(el.dataset.index);
-    const field = el.dataset.field;
-    if(!a.cases[idx]) a.cases[idx] = {};
-    a.cases[idx][field] = el.value;
+    if(lastData.structured_analysis && lastData.structured_analysis.core_arguments[idx]) {
+        lastData.structured_analysis.core_arguments[idx][field] = el.value;
+    }
   });
   
   // 更新金句
-  document.querySelectorAll('[data-type="quotes"]').forEach(el => {
+  document.querySelectorAll('[data-type="golden_sentences"]').forEach(el => {
     const idx = parseInt(el.dataset.index);
     const field = el.dataset.field;
-    if(!a.quotes[idx]) a.quotes[idx] = {};
-    a.quotes[idx][field] = el.value;
+    if(lastData.raw_essence && lastData.raw_essence.golden_sentences[idx]) {
+        lastData.raw_essence.golden_sentences[idx][field] = el.value;
+    }
   });
 }
 
-// 主流程 - 使用新的完整流程API
+// 主流程 - 使用 SSE API
 async function startFlow(){
   const raw = mainInput.value.trim();
   if(!raw){
-    setStatus('请输入 URL 或内容');
+    setStatus('请输入 URL');
     return;
   }
   
-  const isUrl = isURL(raw);
-  if(!isUrl){
+  if(!isURL(raw)){
     setStatus('请输入有效的 URL');
     return;
   }
   
   btnStart.disabled = true;
+  resultsSection.classList.remove('visible');
   
   try{
-    setStatus('抓取并分析中...', true);
+    setStatus('正在提交任务...', true);
     
-    // 使用新的完整流程 API
-    const r = await fetch(`${API_BASE}/extract/full`, {
+    // 1. 提交任务获取 task_id
+    const r = await fetch(`${API_BASE}/api/v2/extract`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({url: raw})
     });
     
     const d = await r.json();
-    if(d.status === 'error'){
-      setStatus('错误: ' + d.message, false);
+    if(d.status !== 'ok'){
+      setStatus('任务提交失败', false);
+      btnStart.disabled = false;
       return;
     }
     
-    lastData = d.data;
+    const taskId = d.task_id;
     
-    // 渲染
-    renderResults(lastData);
-    setStatus('完成！可编辑后保存', false);
+    // 2. 连接 SSE 监听进度
+    if(eventSource) eventSource.close();
+    
+    eventSource = new EventSource(`${API_BASE}/api/v2/tasks/${taskId}/stream`);
+    
+    eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        setStatus(data.message, true);
+        
+        if(data.status === 'complete') {
+            eventSource.close();
+            setStatus('解析完成！可编辑卡片内容', false);
+            btnStart.disabled = false;
+            renderResults(data.data);
+        } else if (data.status === 'error') {
+            eventSource.close();
+            setStatus(`错误: ${data.message}`, false);
+            btnStart.disabled = false;
+        }
+    };
+    
+    eventSource.onerror = (error) => {
+        console.error("SSE Error:", error);
+        eventSource.close();
+        setStatus('连接中断，请重试', false);
+        btnStart.disabled = false;
+    };
     
   }catch(e){
     setStatus('错误: ' + e.message, false);
-  }finally{
     btnStart.disabled = false;
-  }
-}
-
-// 保存到飞书
-async function saveToFeishu(){
-  if(!lastData || !lastData.analysis){
-    setStatus('没有可保存的数据', false);
-    return;
-  }
-  
-  setStatus('保存到飞书...', true);
-  
-  try{
-    updateAnalysisFromUI(); // 先更新数据
-    
-    const r = await fetch(`${API_BASE}/extract/save`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        analysis: lastData.analysis,
-        meta: {
-          url: lastData.url,
-          title: lastData.title,
-          source: 'OneEditor'
-        }
-      })
-    });
-    
-    const d = await r.json();
-    if(d.status === 'error'){
-      setStatus('保存失败: ' + d.message, false);
-      return;
-    }
-    
-    setStatus('已保存到飞书！', false);
-    console.log('Saved:', d.data);
-    
-  }catch(e){
-    setStatus('保存失败: ' + e.message, false);
   }
 }
 
@@ -652,18 +601,15 @@ mainInput.addEventListener('keypress', e => {
 });
 
 // 重新分析
-document.getElementById('btnReanalyze').addEventListener('click', async () => {
-  if(!lastData?.url) return;
-  mainInput.value = lastData.url;
-  await startFlow();
+document.getElementById('btnReanalyze').addEventListener('click', startFlow);
+
+// 此时屏蔽保存飞书逻辑（暂未对接V2 API）
+document.getElementById('btnStore').addEventListener('click', () => {
+    alert("V2.0 飞书同步 API 正在开发中...");
 });
 
-// 保存到飞书
-document.getElementById('btnStore').addEventListener('click', saveToFeishu);
-
-// Writer 跳转
 document.getElementById('btnWriter').addEventListener('click', () => {
-  window.location.href = '/writer';
+  window.location.href = '/writer.html';
 });
 
 console.log('OneEditor V2 loaded.');
