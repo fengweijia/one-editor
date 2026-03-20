@@ -71,9 +71,9 @@ class OpenAICompatibleProvider(LLMProvider):
                     
                     if txt.startswith("```"):
                         txt = re.sub(r"^```[a-zA-Z0-9]*\s*", "", txt)
-                        if txt.endswith("```"):
-                            txt = txt[:-3]
-                        txt = txt.strip()
+                    if txt.endswith("```"):
+                        txt = re.sub(r"\s*```$", "", txt)
+                    txt = txt.strip()
                         
                     # 尝试用 Pydantic 验证
                     parsed_obj = json.loads(txt)
