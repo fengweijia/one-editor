@@ -600,13 +600,53 @@ mainInput.addEventListener('keypress', e => {
   if(e.key === 'Enter') startFlow();
 });
 
+// 保存到飞书
+async function saveToFeishu(){
+  if(!lastData){
+    setStatus('没有可保存的数据', false);
+    return;
+  }
+  
+  setStatus('保存到飞书...', true);
+  
+  try{
+    updateAnalysisFromUI(); // 先更新数据
+    
+    // We assume url was part of the original data or we use mainInput value
+    const url = mainInput.value.trim();
+    
+    const r = await fetch(`${API_BASE}/api/v2/save`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        analysis: lastData,
+        meta: {
+          url: url,
+          title: document.getElementById('resultTitle').textContent,
+          source: 'OneEditor'
+        }
+      })
+    });
+    
+    const d = await r.json();
+    if(d.status === 'error'){
+      setStatus('保存失败: ' + d.message, false);
+      return;
+    }
+    
+    setStatus('已保存到飞书！', false);
+    console.log('Saved:', d.data);
+    
+  }catch(e){
+    setStatus('保存失败: ' + e.message, false);
+  }
+}
+
 // 重新分析
 document.getElementById('btnReanalyze').addEventListener('click', startFlow);
 
 // 此时屏蔽保存飞书逻辑（暂未对接V2 API）
-document.getElementById('btnStore').addEventListener('click', () => {
-    alert("V2.0 飞书同步 API 正在开发中...");
-});
+document.getElementById('btnStore').addEventListener('click', saveToFeishu);
 
 document.getElementById('btnWriter').addEventListener('click', () => {
   window.location.href = '/writer.html';

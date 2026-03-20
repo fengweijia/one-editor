@@ -10,9 +10,10 @@ from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 
-from src.models.schemas import IngestUrlRequest, StoreIndexRequest
+from src.models.schemas import IngestUrlRequest, StoreIndexRequest, LLMExtractionResult
 from src.services.fetcher import fetch_async
 from src.providers.llm import get_provider
+from src.storage.feishu_client import create_records_async
 from src.config.settings import (
     set_model_settings,
     get_model_settings_public,
@@ -113,6 +114,44 @@ async def task_stream(task_id: str, request: Request):
             await asyncio.sleep(0.5)
             
     return EventSourceResponse(event_generator())
+
+@app.post("/api/v2/save")
+async def save_to_feishu(req: StoreIndexRequest):
+    """
+    Save the parsed and user-edited analysis directly to Feishu Bitable.
+    Maps the data to the specific tables.
+    """
+    try:
+        analysis = req.analysis
+        meta = req.meta
+        url = meta.get("url", "")
+        title = meta.get("title", analysis.get("structured_analysis", {}).get("title", "Untitled"))
+        
+        # 1. 写入文章表 (Articles)
+        article_record = {
+            "URL": {"link": url, "text": title},
+            "Title": title,
+            "QualityScore": analysis.get("quality_rating", {}).get("score", 0),
+            "Tags": analysis.get("structured_analysis", {}).get("tags", []),
+            "Status": "Parsed"
+        }
+        
+        # 注意：这里为了简化 MVP，将所有数据写入默认的第一张表
+        # 在完全体的实现中，应该通过 Table ID 区分 Articles / Quotes / Cases 并建立关联
+        # 我们目前把核心内容序列化到一个长文本字段，或者如果有对应字段就映射
+        
+        full_text = json.dumps(analysis, ensure_ascii=False, indent=2)
+        article_record["RawAnalysis"] = full_text[:50000] # Bitable text limit
+        
+        res = await create_records_async(state.feishu_settings.default_table_id, [article_record])
+        
+        if not res.get("success"):
+            return {"status": "error", "message": res.get("error")}
+            
+        return {"status": "ok", "data": res.get("data")}
+        
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 # ==========================================
 # Legacy API endpoints below (kept for UI compatibility)
