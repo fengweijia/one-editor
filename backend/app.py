@@ -38,7 +38,7 @@ async def ingest_url_endpoint(req: IngestUrlRequest):
 @app.post("/ingest/url-universal")
 async def ingest_url_universal_endpoint(req: IngestUrlRequest):
     """使用通用备选方案抓取 URL"""
-    content, title, method = fetch_with_fallback(req.url)
+    content, title, method = await fetch_with_fallback_async(req.url)
     return {
         "status": "ok", 
         "data": {
