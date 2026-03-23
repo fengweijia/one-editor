@@ -58,3 +58,11 @@ yarn-error.log
 frontend/dist/
 frontend/.nuxt/
 .cache/
+
+# OneEditor local settings
+.oneeditor/
+.context/
+
+# Config files with secrets
+config.json
+backend/config.json
